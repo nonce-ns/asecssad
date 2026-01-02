@@ -588,34 +588,27 @@ local function OpenSellDialogue(remotes, npc)
     return true
 end
 
-local function CloseSellDialogue(remotes, savedWalkSpeed, savedJumpPower)
-    if not remotes or not remotes.DialogueEvent then return end
-    pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+local function CloseSellDialogue(remotes)
+    if not remotes then return end
     
-    -- Restore WalkSpeed and JumpPower with aggressive retry
-    -- Dialog controller sets them to 0 and may override our restoration
-    if savedWalkSpeed and savedJumpPower then
-        task.spawn(function()
-            for attempt = 1, 10 do
-                task.wait(0.1 * attempt) -- Increasing delays: 0.1, 0.2, 0.3...
-                
-                local char = GetCharacter()
-                local hum = char and char:FindFirstChild("Humanoid")
-                if not hum then break end
-                
-                local needsFix = hum.WalkSpeed == 0 or hum.JumpPower == 0
-                if not needsFix then break end -- Already restored, stop
-                
-                if hum.WalkSpeed == 0 then
-                    hum.WalkSpeed = savedWalkSpeed
-                    Log("Restored WalkSpeed to " .. savedWalkSpeed .. " (attempt " .. attempt .. ")")
-                end
-                if hum.JumpPower == 0 then
-                    hum.JumpPower = savedJumpPower
-                    Log("Restored JumpPower to " .. savedJumpPower .. " (attempt " .. attempt .. ")")
-                end
+    -- Fire close event multiple times to ensure it registers
+    if remotes.DialogueEvent then
+        for i = 1, 5 do
+            pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+            task.wait(0.05)
+        end
+    end
+    
+    -- Force destroy any dialogue UI that might be keeping controller active
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        for _, gui in pairs(playerGui:GetChildren()) do
+            local name = gui.Name:lower()
+            if name:find("dialog") or name:find("dialogue") then
+                Log("Destroying dialogue UI: " .. gui.Name)
+                pcall(function() gui:Destroy() end)
             end
-        end)
+        end
     end
 end
 
@@ -714,9 +707,11 @@ local function SellOnce()
     task.wait(0.1)
     
     Log("Closing dialogue...")
-    CloseSellDialogue(remotes, savedWalkSpeed, savedJumpPower)
-    task.wait(0.2)
-    CloseSellDialogue(remotes, savedWalkSpeed, savedJumpPower)
+    CloseSellDialogue(remotes)
+    task.wait(0.3)
+    CloseSellDialogue(remotes)
+    task.wait(0.3)
+    CloseSellDialogue(remotes)
     
     if didTeleport and originalCFrame and root then
         Log("Returning to original position...")
@@ -753,11 +748,11 @@ local function SellOnce()
             Log("Movement restoration connections cleaned up")
         end
         
-        -- Auto cleanup after 5 seconds
-        task.delay(5, Cleanup)
+        -- Auto cleanup after 10 seconds (dialog controller can persist)
+        task.delay(10, Cleanup)
         
         wsConnection = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-            if tick() - startTime > 5 then Cleanup() return end
+            if tick() - startTime > 10 then Cleanup() return end
             if hum.WalkSpeed == 0 then
                 hum.WalkSpeed = savedWalkSpeed
                 Log("Instant fix: WalkSpeed restored to " .. savedWalkSpeed)
@@ -765,7 +760,7 @@ local function SellOnce()
         end)
         
         jpConnection = hum:GetPropertyChangedSignal("JumpPower"):Connect(function()
-            if tick() - startTime > 5 then Cleanup() return end
+            if tick() - startTime > 10 then Cleanup() return end
             if hum.JumpPower == 0 then
                 hum.JumpPower = savedJumpPower
                 Log("Instant fix: JumpPower restored to " .. savedJumpPower)
