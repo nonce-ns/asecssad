@@ -599,14 +599,40 @@ local function CloseSellDialogue(remotes)
         end
     end
     
-    -- Force destroy any dialogue UI that might be keeping controller active
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if playerGui then
+        -- Target the specific DialogueUI
+        local dialogueUI = playerGui:FindFirstChild("DialogueUI")
+        if dialogueUI then
+            Log("Disabling DialogueUI")
+            pcall(function() dialogueUI.Enabled = false end)
+            
+            -- Find and disable/re-enable DialogueHandler to reset its state
+            local dialogueHandler = dialogueUI:FindFirstChild("DialogueHandler")
+            if dialogueHandler and dialogueHandler:IsA("LocalScript") then
+                Log("Disabling DialogueHandler script")
+                pcall(function() 
+                    dialogueHandler.Disabled = true 
+                    task.delay(0.2, function()
+                        dialogueHandler.Disabled = false
+                    end)
+                end)
+            end
+            
+            task.wait(0.1)
+            pcall(function() dialogueUI.Enabled = true end)
+        end
+        
+        -- Also disable any visible dialogue frames
         for _, gui in pairs(playerGui:GetChildren()) do
-            local name = gui.Name:lower()
-            if name:find("dialog") or name:find("dialogue") then
-                Log("Destroying dialogue UI: " .. gui.Name)
-                pcall(function() gui:Destroy() end)
+            if gui:IsA("ScreenGui") and gui.Name:lower():find("dialog") then
+                if gui.Enabled then
+                    Log("Disabling: " .. gui.Name)
+                    pcall(function() gui.Enabled = false end)
+                    task.delay(0.2, function()
+                        pcall(function() gui.Enabled = true end)
+                    end)
+                end
             end
         end
     end
@@ -761,9 +787,9 @@ local function SellOnce()
                 local elapsed = tick() - startTime
                 local timeSinceOverride = tick() - lastOverrideTime
                 
-                -- Max timeout: 30 seconds
-                if elapsed > 30 then
-                    Log("Movement protection timeout after 30s")
+                -- Max timeout: 90 seconds (dialog controller can persist very long)
+                if elapsed > 90 then
+                    Log("Movement protection timeout after 90s")
                     Cleanup()
                     break
                 end
