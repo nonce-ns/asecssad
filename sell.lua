@@ -737,37 +737,56 @@ local function SellOnce()
     
     IsSelling = false
     
-    -- AGGRESSIVE MOVEMENT RESTORATION
-    -- Game's dialog controller sets WalkSpeed/JumpPower to 0 and may not restore them
+    -- PERSISTENT MOVEMENT RESTORATION
+    -- Game's dialog controller keeps overriding even after we restore
+    -- Use heartbeat connection to continuously fight back until it stops
     task.spawn(function()
-        Log("Starting movement restoration... (saved WalkSpeed=" .. savedWalkSpeed .. ", JumpPower=" .. savedJumpPower .. ")")
-        for attempt = 1, 15 do
-            task.wait(0.2)
+        Log("Starting persistent movement restoration... (saved WS=" .. savedWalkSpeed .. ", JP=" .. savedJumpPower .. ")")
+        
+        local startTime = tick()
+        local lastFixTime = tick()
+        local fixConnection = nil
+        local fixCount = 0
+        
+        fixConnection = RunService.Heartbeat:Connect(function()
+            local elapsed = tick() - startTime
+            local timeSinceLastFix = tick() - lastFixTime
+            
+            -- Timeout after 5 seconds
+            if elapsed > 5 then
+                if fixConnection then
+                    fixConnection:Disconnect()
+                    fixConnection = nil
+                end
+                Log("Movement restoration timeout after 5s (fixed " .. fixCount .. " times)")
+                return
+            end
+            
+            -- Stop if no fixes needed for 1 second (dialog controller stopped)
+            if timeSinceLastFix > 1 and fixCount > 0 then
+                if fixConnection then
+                    fixConnection:Disconnect()
+                    fixConnection = nil
+                end
+                Log("Movement stable for 1s, stopping restoration (fixed " .. fixCount .. " times)")
+                return
+            end
             
             local char = GetCharacter()
             local hum = char and char:FindFirstChild("Humanoid")
-            if not hum then 
-                Log("Restoration attempt " .. attempt .. ": Humanoid not found")
-                break 
-            end
+            if not hum then return end
             
             local wsStuck = hum.WalkSpeed == 0
             local jpStuck = hum.JumpPower == 0
             
-            if not wsStuck and not jpStuck then
-                Log("Movement OK, stopping restoration loop")
-                break
+            if wsStuck or jpStuck then
+                if wsStuck then hum.WalkSpeed = savedWalkSpeed end
+                if jpStuck then hum.JumpPower = savedJumpPower end
+                fixCount = fixCount + 1
+                lastFixTime = tick()
+                Log("Fix #" .. fixCount .. ": WS=" .. hum.WalkSpeed .. ", JP=" .. hum.JumpPower)
             end
-            
-            if wsStuck then
-                hum.WalkSpeed = savedWalkSpeed
-                Log("Attempt " .. attempt .. ": Restored WalkSpeed to " .. savedWalkSpeed)
-            end
-            if jpStuck then
-                hum.JumpPower = savedJumpPower
-                Log("Attempt " .. attempt .. ": Restored JumpPower to " .. savedJumpPower)
-            end
-        end
+        end)
     end)
 end
 -- AUTO SELL LOOP
