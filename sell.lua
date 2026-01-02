@@ -588,9 +588,23 @@ local function OpenSellDialogue(remotes, npc)
     return true
 end
 
-local function CloseSellDialogue(remotes)
+local function CloseSellDialogue(remotes, savedWalkSpeed, savedJumpPower)
     if not remotes or not remotes.DialogueEvent then return end
     pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+    
+    -- Restore WalkSpeed and JumpPower (dialog controller sets them to 0)
+    task.defer(function()
+        local char = GetCharacter()
+        local hum = char and char:FindFirstChild("Humanoid")
+        if hum then
+            if savedWalkSpeed and hum.WalkSpeed == 0 then
+                hum.WalkSpeed = savedWalkSpeed
+            end
+            if savedJumpPower and hum.JumpPower == 0 then
+                hum.JumpPower = savedJumpPower
+            end
+        end
+    end)
 end
 
 local function SellOnce()
@@ -621,9 +635,15 @@ local function SellOnce()
         return
     end
     
-    local root = GetRoot(GetCharacter())
+    local char = GetCharacter()
+    local root = GetRoot(char)
+    local hum = char and char:FindFirstChild("Humanoid")
     local originalCFrame = root and root.CFrame
     local didTeleport = false
+    
+    -- Save WalkSpeed/JumpPower before dialog (dialog controller sets them to 0)
+    local savedWalkSpeed = hum and hum.WalkSpeed or 16
+    local savedJumpPower = hum and hum.JumpPower or 50
     
     local dialogOpened = false
     if HasInitializedSell then
@@ -682,9 +702,9 @@ local function SellOnce()
     task.wait(0.1)
     
     Log("Closing dialogue...")
-    CloseSellDialogue(remotes)
+    CloseSellDialogue(remotes, savedWalkSpeed, savedJumpPower)
     task.wait(0.2)
-    CloseSellDialogue(remotes)
+    CloseSellDialogue(remotes, savedWalkSpeed, savedJumpPower)
     
     if didTeleport and originalCFrame and root then
         Log("Returning to original position...")
