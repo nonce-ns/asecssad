@@ -592,19 +592,31 @@ local function CloseSellDialogue(remotes, savedWalkSpeed, savedJumpPower)
     if not remotes or not remotes.DialogueEvent then return end
     pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
     
-    -- Restore WalkSpeed and JumpPower (dialog controller sets them to 0)
-    task.defer(function()
-        local char = GetCharacter()
-        local hum = char and char:FindFirstChild("Humanoid")
-        if hum then
-            if savedWalkSpeed and hum.WalkSpeed == 0 then
-                hum.WalkSpeed = savedWalkSpeed
+    -- Restore WalkSpeed and JumpPower with aggressive retry
+    -- Dialog controller sets them to 0 and may override our restoration
+    if savedWalkSpeed and savedJumpPower then
+        task.spawn(function()
+            for attempt = 1, 10 do
+                task.wait(0.1 * attempt) -- Increasing delays: 0.1, 0.2, 0.3...
+                
+                local char = GetCharacter()
+                local hum = char and char:FindFirstChild("Humanoid")
+                if not hum then break end
+                
+                local needsFix = hum.WalkSpeed == 0 or hum.JumpPower == 0
+                if not needsFix then break end -- Already restored, stop
+                
+                if hum.WalkSpeed == 0 then
+                    hum.WalkSpeed = savedWalkSpeed
+                    Log("Restored WalkSpeed to " .. savedWalkSpeed .. " (attempt " .. attempt .. ")")
+                end
+                if hum.JumpPower == 0 then
+                    hum.JumpPower = savedJumpPower
+                    Log("Restored JumpPower to " .. savedJumpPower .. " (attempt " .. attempt .. ")")
+                end
             end
-            if savedJumpPower and hum.JumpPower == 0 then
-                hum.JumpPower = savedJumpPower
-            end
-        end
-    end)
+        end)
+    end
 end
 
 local function SellOnce()
