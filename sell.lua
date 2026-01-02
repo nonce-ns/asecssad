@@ -737,57 +737,51 @@ local function SellOnce()
     
     IsSelling = false
     
-    -- PERSISTENT MOVEMENT RESTORATION
-    -- Game's dialog controller keeps overriding even after we restore
-    -- Use heartbeat connection to continuously fight back until it stops
-    task.spawn(function()
-        Log("Starting persistent movement restoration... (saved WS=" .. savedWalkSpeed .. ", JP=" .. savedJumpPower .. ")")
+    -- INSTANT MOVEMENT RESTORATION using PropertyChangedSignal
+    -- React immediately when game's dialog controller sets values to 0
+    local char = GetCharacter()
+    local hum = char and char:FindFirstChild("Humanoid")
+    if hum then
+        Log("Setting up instant movement restoration (WS=" .. savedWalkSpeed .. ", JP=" .. savedJumpPower .. ")")
         
+        local wsConnection, jpConnection
         local startTime = tick()
-        local lastFixTime = tick()
-        local fixConnection = nil
-        local fixCount = 0
         
-        fixConnection = RunService.Heartbeat:Connect(function()
-            local elapsed = tick() - startTime
-            local timeSinceLastFix = tick() - lastFixTime
-            
-            -- Timeout after 5 seconds
-            if elapsed > 5 then
-                if fixConnection then
-                    fixConnection:Disconnect()
-                    fixConnection = nil
-                end
-                Log("Movement restoration timeout after 5s (fixed " .. fixCount .. " times)")
-                return
-            end
-            
-            -- Stop if no fixes needed for 1 second (dialog controller stopped)
-            if timeSinceLastFix > 1 and fixCount > 0 then
-                if fixConnection then
-                    fixConnection:Disconnect()
-                    fixConnection = nil
-                end
-                Log("Movement stable for 1s, stopping restoration (fixed " .. fixCount .. " times)")
-                return
-            end
-            
-            local char = GetCharacter()
-            local hum = char and char:FindFirstChild("Humanoid")
-            if not hum then return end
-            
-            local wsStuck = hum.WalkSpeed == 0
-            local jpStuck = hum.JumpPower == 0
-            
-            if wsStuck or jpStuck then
-                if wsStuck then hum.WalkSpeed = savedWalkSpeed end
-                if jpStuck then hum.JumpPower = savedJumpPower end
-                fixCount = fixCount + 1
-                lastFixTime = tick()
-                Log("Fix #" .. fixCount .. ": WS=" .. hum.WalkSpeed .. ", JP=" .. hum.JumpPower)
+        local function Cleanup()
+            if wsConnection then wsConnection:Disconnect() wsConnection = nil end
+            if jpConnection then jpConnection:Disconnect() jpConnection = nil end
+            Log("Movement restoration connections cleaned up")
+        end
+        
+        -- Auto cleanup after 5 seconds
+        task.delay(5, Cleanup)
+        
+        wsConnection = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+            if tick() - startTime > 5 then Cleanup() return end
+            if hum.WalkSpeed == 0 then
+                hum.WalkSpeed = savedWalkSpeed
+                Log("Instant fix: WalkSpeed restored to " .. savedWalkSpeed)
             end
         end)
-    end)
+        
+        jpConnection = hum:GetPropertyChangedSignal("JumpPower"):Connect(function()
+            if tick() - startTime > 5 then Cleanup() return end
+            if hum.JumpPower == 0 then
+                hum.JumpPower = savedJumpPower
+                Log("Instant fix: JumpPower restored to " .. savedJumpPower)
+            end
+        end)
+        
+        -- Immediate first fix if already stuck
+        if hum.WalkSpeed == 0 then
+            hum.WalkSpeed = savedWalkSpeed
+            Log("Initial fix: WalkSpeed restored to " .. savedWalkSpeed)
+        end
+        if hum.JumpPower == 0 then
+            hum.JumpPower = savedJumpPower
+            Log("Initial fix: JumpPower restored to " .. savedJumpPower)
+        end
+    end
 end
 -- AUTO SELL LOOP
 -- ═══════════════════════════════════════════════════════════════════════════
