@@ -736,6 +736,39 @@ local function SellOnce()
     end
     
     IsSelling = false
+    
+    -- AGGRESSIVE MOVEMENT RESTORATION
+    -- Game's dialog controller sets WalkSpeed/JumpPower to 0 and may not restore them
+    task.spawn(function()
+        Log("Starting movement restoration... (saved WalkSpeed=" .. savedWalkSpeed .. ", JumpPower=" .. savedJumpPower .. ")")
+        for attempt = 1, 15 do
+            task.wait(0.2)
+            
+            local char = GetCharacter()
+            local hum = char and char:FindFirstChild("Humanoid")
+            if not hum then 
+                Log("Restoration attempt " .. attempt .. ": Humanoid not found")
+                break 
+            end
+            
+            local wsStuck = hum.WalkSpeed == 0
+            local jpStuck = hum.JumpPower == 0
+            
+            if not wsStuck and not jpStuck then
+                Log("Movement OK, stopping restoration loop")
+                break
+            end
+            
+            if wsStuck then
+                hum.WalkSpeed = savedWalkSpeed
+                Log("Attempt " .. attempt .. ": Restored WalkSpeed to " .. savedWalkSpeed)
+            end
+            if jpStuck then
+                hum.JumpPower = savedJumpPower
+                Log("Attempt " .. attempt .. ": Restored JumpPower to " .. savedJumpPower)
+            end
+        end
+    end)
 end
 -- AUTO SELL LOOP
 -- ═══════════════════════════════════════════════════════════════════════════
