@@ -732,48 +732,80 @@ local function SellOnce()
     
     IsSelling = false
     
-    -- INSTANT MOVEMENT RESTORATION using PropertyChangedSignal
-    -- React immediately when game's dialog controller sets values to 0
+    -- SMART MOVEMENT RESTORATION
+    -- Keep protecting until movement stays stable for 3 seconds (no more override attempts)
+    -- Max timeout: 30 seconds
     local char = GetCharacter()
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then
-        Log("Setting up instant movement restoration (WS=" .. savedWalkSpeed .. ", JP=" .. savedJumpPower .. ")")
+        Log("Setting up smart movement restoration (WS=" .. savedWalkSpeed .. ", JP=" .. savedJumpPower .. ")")
         
         local wsConnection, jpConnection
         local startTime = tick()
+        local lastOverrideTime = tick()
+        local fixCount = 0
+        local isActive = true
         
         local function Cleanup()
+            if not isActive then return end
+            isActive = false
             if wsConnection then wsConnection:Disconnect() wsConnection = nil end
             if jpConnection then jpConnection:Disconnect() jpConnection = nil end
-            Log("Movement restoration connections cleaned up")
+            Log("Movement protection ended (fixed " .. fixCount .. " times)")
         end
         
-        -- Auto cleanup after 10 seconds (dialog controller can persist)
-        task.delay(10, Cleanup)
+        -- Check for stability every 0.5 seconds
+        task.spawn(function()
+            while isActive do
+                task.wait(0.5)
+                local elapsed = tick() - startTime
+                local timeSinceOverride = tick() - lastOverrideTime
+                
+                -- Max timeout: 30 seconds
+                if elapsed > 30 then
+                    Log("Movement protection timeout after 30s")
+                    Cleanup()
+                    break
+                end
+                
+                -- Stable for 3 seconds = dialog controller stopped
+                if timeSinceOverride > 3 and fixCount > 0 then
+                    Log("Movement stable for 3s, dialog controller stopped")
+                    Cleanup()
+                    break
+                end
+            end
+        end)
         
         wsConnection = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-            if tick() - startTime > 10 then Cleanup() return end
+            if not isActive then return end
             if hum.WalkSpeed == 0 then
                 hum.WalkSpeed = savedWalkSpeed
-                Log("Instant fix: WalkSpeed restored to " .. savedWalkSpeed)
+                fixCount = fixCount + 1
+                lastOverrideTime = tick()
+                Log("Fix #" .. fixCount .. ": WalkSpeed restored to " .. savedWalkSpeed)
             end
         end)
         
         jpConnection = hum:GetPropertyChangedSignal("JumpPower"):Connect(function()
-            if tick() - startTime > 10 then Cleanup() return end
+            if not isActive then return end
             if hum.JumpPower == 0 then
                 hum.JumpPower = savedJumpPower
-                Log("Instant fix: JumpPower restored to " .. savedJumpPower)
+                fixCount = fixCount + 1
+                lastOverrideTime = tick()
+                Log("Fix #" .. fixCount .. ": JumpPower restored to " .. savedJumpPower)
             end
         end)
         
         -- Immediate first fix if already stuck
         if hum.WalkSpeed == 0 then
             hum.WalkSpeed = savedWalkSpeed
+            fixCount = fixCount + 1
             Log("Initial fix: WalkSpeed restored to " .. savedWalkSpeed)
         end
         if hum.JumpPower == 0 then
             hum.JumpPower = savedJumpPower
+            fixCount = fixCount + 1
             Log("Initial fix: JumpPower restored to " .. savedJumpPower)
         end
     end
