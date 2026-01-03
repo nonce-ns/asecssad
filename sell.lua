@@ -591,49 +591,35 @@ end
 local function CloseSellDialogue(remotes)
     if not remotes then return end
     
-    -- Fire close event multiple times to ensure it registers
-    if remotes.DialogueEvent then
-        for i = 1, 5 do
-            pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
-            task.wait(0.05)
+    -- STEP 1: Remove DisableBackpack tag from Character.Status
+    -- This is what actually locks movement (discovered from DialogueHandler decompile)
+    local char = GetCharacter()
+    if char then
+        local status = char:FindFirstChild("Status")
+        if status then
+            local disableBackpack = status:FindFirstChild("DisableBackpack")
+            if disableBackpack then
+                Log("Removing DisableBackpack tag from Status")
+                pcall(function() disableBackpack:Destroy() end)
+            end
         end
     end
     
+    -- STEP 2: Fire close event to server
+    if remotes.DialogueEvent then
+        pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+    end
+    
+    -- STEP 3: Disable DialogueUI to stop any client-side loops
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if playerGui then
-        -- Target the specific DialogueUI
         local dialogueUI = playerGui:FindFirstChild("DialogueUI")
-        if dialogueUI then
+        if dialogueUI and dialogueUI.Enabled then
             Log("Disabling DialogueUI")
             pcall(function() dialogueUI.Enabled = false end)
-            
-            -- Find and disable/re-enable DialogueHandler to reset its state
-            local dialogueHandler = dialogueUI:FindFirstChild("DialogueHandler")
-            if dialogueHandler and dialogueHandler:IsA("LocalScript") then
-                Log("Disabling DialogueHandler script")
-                pcall(function() 
-                    dialogueHandler.Disabled = true 
-                    task.delay(0.2, function()
-                        dialogueHandler.Disabled = false
-                    end)
-                end)
-            end
-            
-            task.wait(0.1)
-            pcall(function() dialogueUI.Enabled = true end)
-        end
-        
-        -- Also disable any visible dialogue frames
-        for _, gui in pairs(playerGui:GetChildren()) do
-            if gui:IsA("ScreenGui") and gui.Name:lower():find("dialog") then
-                if gui.Enabled then
-                    Log("Disabling: " .. gui.Name)
-                    pcall(function() gui.Enabled = false end)
-                    task.delay(0.2, function()
-                        pcall(function() gui.Enabled = true end)
-                    end)
-                end
-            end
+            task.delay(0.1, function()
+                pcall(function() dialogueUI.Enabled = true end)
+            end)
         end
     end
 end
@@ -758,82 +744,30 @@ local function SellOnce()
     
     IsSelling = false
     
-    -- SMART MOVEMENT RESTORATION
-    -- Keep protecting until movement stays stable for 3 seconds (no more override attempts)
-    -- Max timeout: 30 seconds
+    -- SIMPLE MOVEMENT RESTORATION
+    -- Since we now properly destroy DisableBackpack tag, just do a simple restore
     local char = GetCharacter()
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then
-        Log("Setting up smart movement restoration (WS=" .. savedWalkSpeed .. ", JP=" .. savedJumpPower .. ")")
-        
-        local wsConnection, jpConnection
-        local startTime = tick()
-        local lastOverrideTime = tick()
-        local fixCount = 0
-        local isActive = true
-        
-        local function Cleanup()
-            if not isActive then return end
-            isActive = false
-            if wsConnection then wsConnection:Disconnect() wsConnection = nil end
-            if jpConnection then jpConnection:Disconnect() jpConnection = nil end
-            Log("Movement protection ended (fixed " .. fixCount .. " times)")
-        end
-        
-        -- Check for stability every 0.5 seconds
-        task.spawn(function()
-            while isActive do
-                task.wait(0.5)
-                local elapsed = tick() - startTime
-                local timeSinceOverride = tick() - lastOverrideTime
-                
-                -- Max timeout: 90 seconds (dialog controller can persist very long)
-                if elapsed > 90 then
-                    Log("Movement protection timeout after 90s")
-                    Cleanup()
-                    break
-                end
-                
-                -- Stable for 3 seconds = dialog controller stopped
-                if timeSinceOverride > 3 and fixCount > 0 then
-                    Log("Movement stable for 3s, dialog controller stopped")
-                    Cleanup()
-                    break
-                end
-            end
-        end)
-        
-        wsConnection = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-            if not isActive then return end
-            if hum.WalkSpeed == 0 then
-                hum.WalkSpeed = savedWalkSpeed
-                fixCount = fixCount + 1
-                lastOverrideTime = tick()
-                Log("Fix #" .. fixCount .. ": WalkSpeed restored to " .. savedWalkSpeed)
-            end
-        end)
-        
-        jpConnection = hum:GetPropertyChangedSignal("JumpPower"):Connect(function()
-            if not isActive then return end
-            if hum.JumpPower == 0 then
-                hum.JumpPower = savedJumpPower
-                fixCount = fixCount + 1
-                lastOverrideTime = tick()
-                Log("Fix #" .. fixCount .. ": JumpPower restored to " .. savedJumpPower)
-            end
-        end)
-        
-        -- Immediate first fix if already stuck
+        -- Immediate restore
         if hum.WalkSpeed == 0 then
             hum.WalkSpeed = savedWalkSpeed
-            fixCount = fixCount + 1
-            Log("Initial fix: WalkSpeed restored to " .. savedWalkSpeed)
+            Log("Movement restored: WalkSpeed=" .. savedWalkSpeed)
         end
         if hum.JumpPower == 0 then
             hum.JumpPower = savedJumpPower
-            fixCount = fixCount + 1
-            Log("Initial fix: JumpPower restored to " .. savedJumpPower)
+            Log("Movement restored: JumpPower=" .. savedJumpPower)
         end
+        
+        -- One more restore after short delay just in case
+        task.delay(0.3, function()
+            if hum and hum.WalkSpeed == 0 then
+                hum.WalkSpeed = savedWalkSpeed
+            end
+            if hum and hum.JumpPower == 0 then
+                hum.JumpPower = savedJumpPower
+            end
+        end)
     end
 end
 -- AUTO SELL LOOP
