@@ -1,11 +1,3 @@
---[[
-    THE FORGE - SELL MODULE v1.0 (REFACTORED)
-
-    Auto-sell ores/essences via dialogue flow.
-    Features: Hybrid sell (direct → fallback teleport), skip favorites, logging.
-    Requires: main.lua executed first
-]]
-
 local startTime = os.clock()
 repeat task.wait(0.5) until (_G.Forge and _G.Forge.Tabs and _G.Forge.Tabs.Player and _G.Forge.Rayfield)
     or (os.clock() - startTime) > 10
