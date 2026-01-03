@@ -878,6 +878,24 @@ local function SellOnce()
             end
         end)
         
+        -- Try to unlock InputAction system
+        pcall(function()
+            local InputAction = require(ReplicatedStorage.Shared.InputAction)
+            if InputAction then
+                -- Try various unlock methods
+                if InputAction.Unlock then
+                    InputAction:Unlock(Enum.KeyCode.Q)
+                    Log("Unlocked Q key via InputAction")
+                end
+                if InputAction.UnlockAll then
+                    InputAction:UnlockAll()
+                end
+                if InputAction.Clear then
+                    InputAction:Clear()
+                end
+            end
+        end)
+        
         -- One more comprehensive restore after delay
         task.delay(0.5, function()
             if hum then
