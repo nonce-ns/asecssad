@@ -755,29 +755,56 @@ local function SellOnce()
     
     IsSelling = false
     
-    -- SIMPLE MOVEMENT RESTORATION
-    -- Since we now properly destroy DisableBackpack tag, just do a simple restore
+    -- COMPREHENSIVE MOVEMENT RESTORATION
     local char = GetCharacter()
     local hum = char and char:FindFirstChild("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    
     if hum then
-        -- Immediate restore
-        if hum.WalkSpeed == 0 then
-            hum.WalkSpeed = savedWalkSpeed
-            Log("Movement restored: WalkSpeed=" .. savedWalkSpeed)
-        end
-        if hum.JumpPower == 0 then
-            hum.JumpPower = savedJumpPower
-            Log("Movement restored: JumpPower=" .. savedJumpPower)
+        -- Remove ALL BoolValues in Status that might block movement
+        local status = char:FindFirstChild("Status")
+        if status then
+            for _, child in pairs(status:GetChildren()) do
+                if child:IsA("BoolValue") then
+                    Log("Removing Status tag: " .. child.Name)
+                    pcall(function() child:Destroy() end)
+                end
+            end
         end
         
-        -- One more restore after short delay just in case
-        task.delay(0.3, function()
-            if hum and hum.WalkSpeed == 0 then
-                hum.WalkSpeed = savedWalkSpeed
+        -- Fix all possible blocking states
+        hum.PlatformStand = false
+        hum.Sit = false
+        
+        -- Restore movement speeds
+        if hum.WalkSpeed == 0 or hum.WalkSpeed < savedWalkSpeed then
+            hum.WalkSpeed = savedWalkSpeed
+            Log("WalkSpeed restored to " .. savedWalkSpeed)
+        end
+        if hum.JumpPower == 0 or hum.JumpPower < savedJumpPower then
+            hum.JumpPower = savedJumpPower
+            Log("JumpPower restored to " .. savedJumpPower)
+        end
+        
+        -- Unanchor root part
+        if root and root.Anchored then
+            root.Anchored = false
+            Log("HumanoidRootPart unanchored")
+        end
+        
+        -- Force humanoid state to Running
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+        
+        -- One more comprehensive restore after delay
+        task.delay(0.5, function()
+            if hum then
+                hum.PlatformStand = false
+                hum.Sit = false
+                if hum.WalkSpeed == 0 then hum.WalkSpeed = savedWalkSpeed end
+                if hum.JumpPower == 0 then hum.JumpPower = savedJumpPower end
+                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
             end
-            if hum and hum.JumpPower == 0 then
-                hum.JumpPower = savedJumpPower
-            end
+            if root and root.Anchored then root.Anchored = false end
         end)
     end
 end
