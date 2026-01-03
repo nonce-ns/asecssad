@@ -737,17 +737,17 @@ local function OpenSellDialogue(remotes, npc)
         return false
     end
     
-    -- Step 3: wait for server to send SellConfirmMisc root before we RunCommand (retry once)
+    -- Step 3: wait for server to send SellConfirmMisc root before we RunCommand (retry once); do not fail hard if missing
     local gotConfirm, confirmCtx = WaitForDialogueRoot("SellConfirmMisc", 2)
     if not gotConfirm then
         task.wait(0.5)
         gotConfirm, confirmCtx = WaitForDialogueRoot("SellConfirmMisc", 2)
     end
     if not gotConfirm then
-        return false
+        Log("Warning: SellConfirmMisc not observed, continuing anyway")
     end
 
-    -- Step 4: mark opened once for confirm dialog (only if we have context)
+    -- Step 4: mark opened once for confirm dialog
     if remotes.DialogueEvent then
         pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
     end
