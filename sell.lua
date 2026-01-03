@@ -495,9 +495,9 @@ local function BuildBasket()
                     end
                 elseif guid then
                     local isEquipment = item.Ores or item.Runes or item.Upgrade or item.Type
-                    local isRune = item.Traits ~= nil
+                    -- Rune items (with Traits) are now sellable, protected by favorites
                     
-                    if not isEquipment and not isRune then
+                    if not isEquipment then
                         if not Config.SkipFavorites or not favorites[guid] then
                             basket[guid] = 1
                             itemCount = itemCount + 1
@@ -874,12 +874,16 @@ local function SellOnce(opts)
     end
 
     local dialogOpened = false
-    -- Coba reuse atau buka dialog di posisi sekarang dulu (tanpa teleport)
+    -- Try reuse cached context first (for no-teleport mode)
     dialogOpened = TryReuseCachedConfirm(remotes)
-    if not dialogOpened then
+    if dialogOpened then
+        Log("Using cached context - skipping OpenSellDialogue")
+    else
         Log("Opening dialogue...")
         dialogOpened = OpenSellDialogue(remotes, npc)
     end
+
+
 
     -- Jika gagal dan user minta noTeleport atau sudah pernah init dengan NoTeleportAfterFirst, berhenti tanpa teleport
     if not dialogOpened and (noTeleport or (HasInitializedSell and Config.NoTeleportAfterFirst)) then
@@ -948,10 +952,10 @@ local function SellOnce(opts)
     
     ToggleDialogueHandler(false)
 
-    -- TRIGGER AUTO-CLOSE BY RANGE
+    -- TRIGGER AUTO-CLOSE BY RANGE (skip for noTeleport mode)
     -- DialogueHandler auto-closes when player is >18 units from NPC
     -- Teleport far away briefly, wait for range check (runs every 1s), then return
-    if root and npc then
+    if not noTeleport and root and npc then
         local npcPos = npc.HumanoidRootPart and npc.HumanoidRootPart.Position or npc.PrimaryPart and npc.PrimaryPart.Position
         if npcPos then
             local farAwayPos = npcPos + Vector3.new(50, 0, 50) -- 50+ units away
