@@ -1078,26 +1078,6 @@ local function SellOnce(opts)
                             CharacterController.Cooldowns.StaminaInterfaceCd = 0
                         end
                     end
-                    
-                    -- Try calling CharacterService:Dash with delay (after dialog fully closes)
-                    task.delay(1.5, function()
-                        pcall(function()
-                            local CharacterService = KnitModule.GetService("CharacterService")
-                            if CharacterService and CharacterService.Dash then
-                                CharacterService:Dash("LookVector", "+")
-                                Log("Delayed CharacterService:Dash called")
-                            end
-                        end)
-                        
-                        -- Also try direct RF invoke
-                        pcall(function()
-                            local dashRF = ReplicatedStorage.Shared.Packages.Knit.Services.CharacterService.RF.Dash
-                            if dashRF then
-                                dashRF:InvokeServer("LookVector", "+")
-                                Log("Direct RF Dash invoked")
-                            end
-                        end)
-                    end)
                 end
             end
         end)
