@@ -153,6 +153,9 @@ end
 -- DialogueRemote tap to avoid missed events
 local LastDialogueRoot = {root = nil, ctx = nil, time = 0}
 local DialogueTapConn = nil
+local CachedConfirmCtx = nil
+local CachedConfirmTime = 0
+
 local function EnsureDialogueTap()
     if DialogueTapConn and DialogueTapConn.Connected then return end
     local dlgRemote = ReplicatedStorage:FindFirstChild("DialogueRemote", true)
@@ -161,6 +164,10 @@ local function EnsureDialogueTap()
         LastDialogueRoot.root = root
         LastDialogueRoot.ctx = ctx
         LastDialogueRoot.time = os.clock()
+        if root == "SellConfirmMisc" then
+            CachedConfirmCtx = ctx
+            CachedConfirmTime = os.clock()
+        end
     end)
 end
 
@@ -198,6 +205,18 @@ local function WaitForDialogueRoot(targetRoot, timeout)
 
     if conn then conn:Disconnect() end
     return received, receivedCtx
+end
+
+local function TryReuseCachedConfirm(remotes)
+    if not CachedConfirmCtx then return false end
+    if (os.clock() - CachedConfirmTime) > 120 then
+        return false
+    end
+    Log("Reusing cached SellConfirm context (no teleport)")
+    if remotes and remotes.DialogueEvent then
+        pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
+    end
+    return true
 end
 
 local function ToggleDialogueHandler(disable)
@@ -747,7 +766,10 @@ local function OpenSellDialogue(remotes, npc)
     if not gotConfirm then
         Log("Warning: SellConfirmMisc not observed, continuing anyway")
     end
-
+    if confirmCtx then
+        CachedConfirmCtx = confirmCtx
+        CachedConfirmTime = os.clock()
+    end
     -- Step 4: mark opened once for confirm dialog
     if remotes.DialogueEvent then
         pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
@@ -809,7 +831,7 @@ local function CloseSellDialogue(remotes)
     end
 end
 
-local function SellOnce()
+local function SellOnce(opts)
     if IsSelling then return end
     IsSelling = true
     
@@ -853,19 +875,30 @@ local function SellOnce()
     local savedWalkSpeed = hum and hum.WalkSpeed or 16
     local savedJumpPower = hum and hum.JumpPower or 50
     
+    local forceTeleport = opts and opts.forceTeleport
+    local noTeleport = opts and opts.noTeleport
+    if forceTeleport then
+        HasInitializedSell = false -- paksa jalur teleport
+    end
+
     local dialogOpened = false
-    if HasInitializedSell then
+    -- Coba reuse atau buka dialog di posisi sekarang dulu (tanpa teleport)
+    dialogOpened = TryReuseCachedConfirm(remotes)
+    if not dialogOpened then
         Log("Opening dialogue...")
         dialogOpened = OpenSellDialogue(remotes, npc)
-        if not dialogOpened and Config.NoTeleportAfterFirst then
-            IsSelling = false
-            Notify("Auto Sell", "Dialog not in range (no teleport after first). Move closer.", 3)
-            ToggleDialogueHandler(false)
-            return
-        end
+    end
+
+    -- Jika gagal dan user minta noTeleport atau sudah pernah init dengan NoTeleportAfterFirst, berhenti tanpa teleport
+    if not dialogOpened and (noTeleport or (HasInitializedSell and Config.NoTeleportAfterFirst)) then
+        IsSelling = false
+        Notify("Auto Sell", "Dialog tidak dapat dibuka tanpa teleport. Dekati NPC.", 3)
+        ToggleDialogueHandler(false)
+        return
     end
     
-    if not dialogOpened then
+    -- Jika masih gagal, baru paksa teleport (kecuali noTeleport)
+    if not dialogOpened and not noTeleport then
         local npcPos = GetNPCTeleportPosition()
         if not npcPos then
             IsSelling = false
@@ -1159,6 +1192,12 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 
 Forge.SellOnce = SellOnce
+Forge.SellOnceNoTeleport = function()
+    return SellOnce({ noTeleport = true })
+end
+Forge.SellOnceForceTeleport = function()
+    return SellOnce({ forceTeleport = true })
+end
 Forge.StartAutoSell = StartAutoSell
 Forge.StopAutoSell = StopAutoSell
 Forge.GetSellPlayerData = GetPlayerData
