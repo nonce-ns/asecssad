@@ -659,22 +659,19 @@ local function OpenSellDialogue(remotes, npc)
         return false
     end
     
-    -- Step 1: request initial dialogue prompt (SellDialogueMisc)
+    -- Step 1: request initial dialogue prompt (SellDialogueMisc). If it fails, continue with ForceDialogue as fallback.
     local ok, result = pcall(function()
         return remotes.Dialogue:InvokeServer(npc)
     end)
-    if not ok or result == false then
-        return false
-    end
-
-    -- Wait for initial prompt root, then mark opened/closed to simulate "Yes"
-    local gotPrompt = WaitForDialogueRoot("SellDialogueMisc", 2)
-    if gotPrompt and remotes.DialogueEvent then
-        pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
-        pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+    if ok and result ~= false then
+        local gotPrompt = WaitForDialogueRoot("SellDialogueMisc", 1.5)
+        if gotPrompt and remotes.DialogueEvent then
+            pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
+            pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+        end
     end
     
-    -- Step 2: open sell confirm
+    -- Step 2: open sell confirm (always attempt, even if Step 1 failed)
     local okForce = false
     ok, result = pcall(function()
         return remotes.ForceDialogue:InvokeServer(npc, "SellConfirmMisc")
