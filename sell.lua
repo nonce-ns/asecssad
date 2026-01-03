@@ -259,6 +259,42 @@ local function GetPlayerData()
     return nil, nil
 end
 
+-- Find PlayerStatus (contains Movement data with DashCooldown)
+local function GetPlayerStatus()
+    if type(getgc) ~= "function" then return nil end
+    local ok, objects = pcall(getgc, true)
+    if not ok or type(objects) ~= "table" then return nil end
+    
+    local userId = LocalPlayer and LocalPlayer.UserId
+    if not userId then return nil end
+    
+    for _, obj in pairs(objects) do
+        if type(obj) == "table" then
+            local token = rawget(obj, "Token")
+            local tags = rawget(obj, "Tags")
+            local data = rawget(obj, "Data")
+            
+            -- Look for PlayerStatus token
+            if token == "PlayerStatus" and type(data) == "table" then
+                -- Verify it's for our player
+                if type(tags) == "table" then
+                    local objUserId = rawget(tags, "UserId")
+                    if objUserId == userId or tonumber(objUserId) == userId then
+                        return data
+                    end
+                else
+                    -- If no tags, check for Movement table
+                    if type(rawget(data, "Movement")) == "table" then
+                        return data
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- NPC TELEPORT POSITION
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -797,11 +833,11 @@ local function SellOnce()
         
         -- Reset PlayerStatus Movement data (DashCooldown, etc)
         pcall(function()
-            local playerData = GetPlayerData()
-            if playerData and playerData.Data and playerData.Data.Movement then
-                playerData.Data.Movement.DashCooldown = false
-                playerData.Data.Movement.Dashing = false
-                Log("Reset dash cooldown")
+            local playerStatus = GetPlayerStatus()
+            if playerStatus and playerStatus.Movement then
+                playerStatus.Movement.DashCooldown = false
+                playerStatus.Movement.Dashing = false
+                Log("Reset dash cooldown via PlayerStatus")
             end
         end)
         
@@ -816,12 +852,12 @@ local function SellOnce()
             end
             if root and root.Anchored then root.Anchored = false end
             
-            -- Reset dash again
+            -- Reset dash again using PlayerStatus
             pcall(function()
-                local playerData = GetPlayerData()
-                if playerData and playerData.Data and playerData.Data.Movement then
-                    playerData.Data.Movement.DashCooldown = false
-                    playerData.Data.Movement.Dashing = false
+                local playerStatus = GetPlayerStatus()
+                if playerStatus and playerStatus.Movement then
+                    playerStatus.Movement.DashCooldown = false
+                    playerStatus.Movement.Dashing = false
                 end
             end)
         end)
