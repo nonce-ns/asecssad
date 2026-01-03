@@ -149,10 +149,34 @@ local function ShouldClearStatusBool(name)
         or lower == "nodashcooldown"
 end
 
+-- DialogueRemote tap to avoid missed events
+local LastDialogueRoot = {root = nil, ctx = nil, time = 0}
+local DialogueTapConn = nil
+local function EnsureDialogueTap()
+    if DialogueTapConn and DialogueTapConn.Connected then return end
+    local dlgRemote = ReplicatedStorage:FindFirstChild("DialogueRemote", true)
+    if not dlgRemote then return end
+    DialogueTapConn = dlgRemote.OnClientEvent:Connect(function(root, ctx)
+        LastDialogueRoot.root = root
+        LastDialogueRoot.ctx = ctx
+        LastDialogueRoot.time = os.clock()
+    end)
+end
+
 -- Wait for DialogueRemote to deliver a specific root (e.g., SellConfirmMisc)
 local function WaitForDialogueRoot(targetRoot, timeout)
+    EnsureDialogueTap()
     local dlgRemote = ReplicatedStorage:FindFirstChild("DialogueRemote", true)
     if not dlgRemote or not targetRoot then return false, nil end
+
+    local start = os.clock()
+    local limit = timeout or 2
+
+    -- If already seen recently, return immediately
+    if LastDialogueRoot.root == targetRoot and (os.clock() - LastDialogueRoot.time) <= limit then
+        return true, LastDialogueRoot.ctx
+    end
+
     local received = false
     local receivedCtx = nil
     local conn
@@ -162,11 +186,15 @@ local function WaitForDialogueRoot(targetRoot, timeout)
             receivedCtx = ctx
         end
     end)
-    local start = os.clock()
-    local limit = timeout or 2
+
     while not received and (os.clock() - start) < limit do
         task.wait(0.05)
+        if LastDialogueRoot.root == targetRoot and (os.clock() - LastDialogueRoot.time) <= limit then
+            received = true
+            receivedCtx = LastDialogueRoot.ctx
+        end
     end
+
     if conn then conn:Disconnect() end
     return received, receivedCtx
 end
