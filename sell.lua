@@ -659,16 +659,19 @@ local function OpenSellDialogue(remotes, npc)
         return false
     end
     
-    -- Step 1: request dialogue prompt (server validates range)
-    local okDialogue = false
+    -- Step 1: request initial dialogue prompt (SellDialogueMisc)
     local ok, result = pcall(function()
         return remotes.Dialogue:InvokeServer(npc)
     end)
-    if ok and result ~= false then
-        okDialogue = true
-    end
-    if not okDialogue then
+    if not ok or result == false then
         return false
+    end
+
+    -- Wait for initial prompt root, then mark opened/closed to simulate "Yes"
+    local gotPrompt = WaitForDialogueRoot("SellDialogueMisc", 2)
+    if gotPrompt and remotes.DialogueEvent then
+        pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
+        pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
     end
     
     -- Step 2: open sell confirm
@@ -682,14 +685,14 @@ local function OpenSellDialogue(remotes, npc)
     if not okForce then
         return false
     end
-
+    
     -- Step 3: wait for server to send SellConfirmMisc root before we RunCommand
     local gotConfirm = WaitForDialogueRoot("SellConfirmMisc", 2)
     if not gotConfirm then
         return false
     end
 
-    -- Step 4: mark opened once (single Opened)
+    -- Step 4: mark opened once for confirm dialog
     if remotes.DialogueEvent then
         pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
     end
