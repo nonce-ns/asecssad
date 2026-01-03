@@ -38,6 +38,7 @@ local DefaultConfig = {
     SellInterval = 30,
     SellCooldown = 2,
     SkipFavorites = true,
+    NoTeleportAfterFirst = true, -- after first success, try without teleport; if dialog fails, skip instead of teleporting
 }
 
 local Config = {}
@@ -856,6 +857,12 @@ local function SellOnce()
     if HasInitializedSell then
         Log("Opening dialogue...")
         dialogOpened = OpenSellDialogue(remotes, npc)
+        if not dialogOpened and Config.NoTeleportAfterFirst then
+            IsSelling = false
+            Notify("Auto Sell", "Dialog not in range (no teleport after first). Move closer.", 3)
+            ToggleDialogueHandler(false)
+            return
+        end
     end
     
     if not dialogOpened then
