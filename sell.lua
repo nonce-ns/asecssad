@@ -720,10 +720,21 @@ local function SellOnce()
     
     Log("Closing dialogue...")
     CloseSellDialogue(remotes)
-    task.wait(0.3)
-    CloseSellDialogue(remotes)
-    task.wait(0.3)
-    CloseSellDialogue(remotes)
+    
+    -- TRIGGER AUTO-CLOSE BY RANGE
+    -- DialogueHandler auto-closes when player is >18 units from NPC
+    -- Teleport far away briefly, wait for range check (runs every 1s), then return
+    if root and npc then
+        local npcPos = npc.HumanoidRootPart and npc.HumanoidRootPart.Position or npc.PrimaryPart and npc.PrimaryPart.Position
+        if npcPos then
+            local farAwayPos = npcPos + Vector3.new(50, 0, 50) -- 50+ units away
+            Log("Teleporting away to trigger dialogue auto-close...")
+            root.CFrame = CFrame.new(farAwayPos)
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+            task.wait(1.2) -- Wait for range check (runs every 1 second)
+        end
+    end
     
     if didTeleport and originalCFrame and root then
         Log("Returning to original position...")
