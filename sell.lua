@@ -848,7 +848,7 @@ local function SellOnce()
             end
         end)
         
-        -- Try to reset dash via Knit controller
+        -- Try to reset dash via Knit controller (PlayerController.Status.Data.Movement)
         pcall(function()
             local Shared = ReplicatedStorage:FindFirstChild("Shared")
             local Packages = Shared and Shared:FindFirstChild("Packages")
@@ -856,25 +856,22 @@ local function SellOnce()
             if Knit then
                 local KnitModule = require(Knit)
                 if KnitModule.GetController then
-                    local MovementController = KnitModule.GetController("MovementController")
-                    if MovementController then
-                        if MovementController.DashCooldown ~= nil then
-                            MovementController.DashCooldown = false
-                            Log("Reset MovementController.DashCooldown")
-                        end
-                        if MovementController.IsDashing ~= nil then
-                            MovementController.IsDashing = false
-                        end
-                        if MovementController.CanDash ~= nil then
-                            MovementController.CanDash = true
+                    -- PlayerController has Status with Data.Movement
+                    local PlayerController = KnitModule.GetController("PlayerController")
+                    if PlayerController and PlayerController.Status then
+                        local status = PlayerController.Status
+                        if status.Data and status.Data.Movement then
+                            status.Data.Movement.DashCooldown = false
+                            status.Data.Movement.Dashing = false
+                            Log("Reset PlayerController.Status.Data.Movement.DashCooldown")
                         end
                     end
                     
-                    local PlayerController = KnitModule.GetController("PlayerController")
-                    if PlayerController then
-                        if PlayerController.DashCooldown ~= nil then
-                            PlayerController.DashCooldown = false
-                            Log("Reset PlayerController.DashCooldown")
+                    -- Also check CharacterController
+                    local CharacterController = KnitModule.GetController("CharacterController")
+                    if CharacterController then
+                        if CharacterController.Cooldowns then
+                            CharacterController.Cooldowns.StaminaInterfaceCd = 0
                         end
                     end
                 end
