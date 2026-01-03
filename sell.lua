@@ -485,15 +485,21 @@ local function BuildBasket()
                 local name = item.Name
                 local quantity = item.Quantity
                 local guid = item.GUID
+                local addedToBasket = false
                 
+                -- Check for essence items (have Name and Quantity)
                 if name and quantity and type(quantity) == "number" and quantity > 0 then
                     if EssenceNames[name] then
                         if not Config.SkipFavorites or not favorites[name] then
                             basket[name] = (basket[name] or 0) + quantity
                             itemCount = itemCount + quantity
+                            addedToBasket = true
                         end
                     end
-                elseif guid then
+                end
+                
+                -- Check for GUID items (runes, misc items) - if not already added as essence
+                if not addedToBasket and guid then
                     local isEquipment = item.Ores or item.Runes or item.Upgrade or item.Type
                     -- Rune items (with Traits) are now sellable, protected by favorites
                     
