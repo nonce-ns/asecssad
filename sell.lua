@@ -891,6 +891,16 @@ local function SellOnce()
                             CharacterController.Cooldowns.StaminaInterfaceCd = 0
                         end
                     end
+                    
+                    -- Try calling CharacterService:Dash directly to test/reset
+                    local CharacterService = KnitModule.GetService("CharacterService")
+                    if CharacterService and CharacterService.Dash then
+                        -- Do a quick dash to reset internal state (will appear as brief forward dash)
+                        pcall(function()
+                            CharacterService:Dash("LookVector", "+")
+                            Log("Called CharacterService:Dash to reset state")
+                        end)
+                    end
                 end
             end
         end)
