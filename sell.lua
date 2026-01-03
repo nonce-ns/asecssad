@@ -875,6 +875,7 @@ local function SellOnce(opts)
     
     local forceTeleport = opts and opts.forceTeleport
     local noTeleport = opts and opts.noTeleport
+    Log("SellOnce called: noTeleport=" .. tostring(noTeleport) .. ", forceTeleport=" .. tostring(forceTeleport))
     if forceTeleport then
         HasInitializedSell = false -- paksa jalur teleport
     end
@@ -892,7 +893,9 @@ local function SellOnce(opts)
 
 
     -- Jika gagal dan user minta noTeleport atau sudah pernah init dengan NoTeleportAfterFirst, berhenti tanpa teleport
+    Log("dialogOpened=" .. tostring(dialogOpened) .. ", noTeleport=" .. tostring(noTeleport) .. ", HasInitializedSell=" .. tostring(HasInitializedSell))
     if not dialogOpened and (noTeleport or (HasInitializedSell and Config.NoTeleportAfterFirst)) then
+        Log("Returning early - dialog not opened and noTeleport mode")
         IsSelling = false
         Notify("Auto Sell", "Dialog tidak dapat dibuka tanpa teleport. Dekati NPC.", 3)
         ToggleDialogueHandler(false)
