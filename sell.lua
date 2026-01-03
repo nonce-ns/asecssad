@@ -646,16 +646,33 @@ local function CloseSellDialogue(remotes)
         pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
     end
     
-    -- STEP 3: Disable DialogueUI to stop any client-side loops
+    -- STEP 3: Disable DialogueUI and hide ALL buttons inside (prevents InputAction from blocking Q key)
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if playerGui then
         local dialogueUI = playerGui:FindFirstChild("DialogueUI")
-        if dialogueUI and dialogueUI.Enabled then
-            Log("Disabling DialogueUI")
+        if dialogueUI then
+            Log("Disabling DialogueUI and hiding buttons")
+            
+            -- Hide all GuiButtons to prevent InputAction.IsActive() from blocking dash
+            for _, descendant in pairs(dialogueUI:GetDescendants()) do
+                if descendant:IsA("GuiButton") then
+                    pcall(function() 
+                        descendant.Visible = false 
+                        descendant.Interactable = false
+                    end)
+                end
+            end
+            
             pcall(function() dialogueUI.Enabled = false end)
-            task.delay(0.1, function()
+            task.delay(0.2, function()
                 pcall(function() dialogueUI.Enabled = true end)
             end)
+        end
+        
+        -- Also hide ResponseBillboard if it exists
+        local responseBillboard = dialogueUI and dialogueUI:FindFirstChild("ResponseBillboard")
+        if responseBillboard then
+            pcall(function() responseBillboard.Visible = false end)
         end
     end
 end
