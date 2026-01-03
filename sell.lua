@@ -795,6 +795,16 @@ local function SellOnce()
         -- Force humanoid state to Running
         pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
         
+        -- Reset PlayerStatus Movement data (DashCooldown, etc)
+        pcall(function()
+            local playerData = GetPlayerData()
+            if playerData and playerData.Data and playerData.Data.Movement then
+                playerData.Data.Movement.DashCooldown = false
+                playerData.Data.Movement.Dashing = false
+                Log("Reset dash cooldown")
+            end
+        end)
+        
         -- One more comprehensive restore after delay
         task.delay(0.5, function()
             if hum then
@@ -805,6 +815,15 @@ local function SellOnce()
                 pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
             end
             if root and root.Anchored then root.Anchored = false end
+            
+            -- Reset dash again
+            pcall(function()
+                local playerData = GetPlayerData()
+                if playerData and playerData.Data and playerData.Data.Movement then
+                    playerData.Data.Movement.DashCooldown = false
+                    playerData.Data.Movement.Dashing = false
+                end
+            end)
         end)
     end
 end
