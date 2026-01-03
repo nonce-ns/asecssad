@@ -152,12 +152,14 @@ end
 -- Wait for DialogueRemote to deliver a specific root (e.g., SellConfirmMisc)
 local function WaitForDialogueRoot(targetRoot, timeout)
     local dlgRemote = ReplicatedStorage:FindFirstChild("DialogueRemote", true)
-    if not dlgRemote or not targetRoot then return false end
+    if not dlgRemote or not targetRoot then return false, nil end
     local received = false
+    local receivedCtx = nil
     local conn
-    conn = dlgRemote.OnClientEvent:Connect(function(root)
+    conn = dlgRemote.OnClientEvent:Connect(function(root, ctx)
         if root == targetRoot then
             received = true
+            receivedCtx = ctx
         end
     end)
     local start = os.clock()
@@ -166,7 +168,20 @@ local function WaitForDialogueRoot(targetRoot, timeout)
         task.wait(0.05)
     end
     if conn then conn:Disconnect() end
-    return received
+    return received, receivedCtx
+end
+
+local function ToggleDialogueHandler(disable)
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return end
+    local dialogueUI = playerGui:FindFirstChild("DialogueUI")
+    if not dialogueUI then return end
+    local handler = dialogueUI:FindFirstChild("DialogueHandler")
+    if handler and handler:IsA("LocalScript") then
+        pcall(function()
+            handler.Disabled = disable and true or false
+        end)
+    end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -681,25 +696,28 @@ local function OpenSellDialogue(remotes, npc)
     end
     if not okForce then
         task.wait(0.5)
-        okForce = remotes.ForceDialogue and pcall(function()
+        local ok2, res2 = pcall(function()
             return remotes.ForceDialogue:InvokeServer(npc, "SellConfirmMisc")
         end)
+        if ok2 and res2 ~= false then
+            okForce = true
+        end
     end
     if not okForce then
         return false
     end
     
     -- Step 3: wait for server to send SellConfirmMisc root before we RunCommand (retry once)
-    local gotConfirm = WaitForDialogueRoot("SellConfirmMisc", 2)
+    local gotConfirm, confirmCtx = WaitForDialogueRoot("SellConfirmMisc", 2)
     if not gotConfirm then
         task.wait(0.5)
-        gotConfirm = WaitForDialogueRoot("SellConfirmMisc", 2)
+        gotConfirm, confirmCtx = WaitForDialogueRoot("SellConfirmMisc", 2)
     end
     if not gotConfirm then
         return false
     end
 
-    -- Step 4: mark opened once for confirm dialog
+    -- Step 4: mark opened once for confirm dialog (only if we have context)
     if remotes.DialogueEvent then
         pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
     end
@@ -764,10 +782,14 @@ local function SellOnce()
     if IsSelling then return end
     IsSelling = true
     
+    -- Temporarily disable DialogueHandler to avoid client errors; we'll manage closure ourselves
+    ToggleDialogueHandler(true)
+
     local basket, reason, count = BuildBasket()
     if not basket then
         IsSelling = false
         Notify("Auto Sell", reason or "No items", 2)
+        ToggleDialogueHandler(false)
         return
     end
     
@@ -777,6 +799,7 @@ local function SellOnce()
     if not remotes.RunCommand or not remotes.ForceDialogue or not remotes.Dialogue then
         IsSelling = false
         Notify("Auto Sell", "Remotes not found", 3)
+        ToggleDialogueHandler(false)
         return
     end
     
@@ -785,6 +808,7 @@ local function SellOnce()
     if not npc then
         IsSelling = false
         Notify("Auto Sell", "NPC Greedy Cey not found", 3)
+        ToggleDialogueHandler(false)
         return
     end
     
@@ -809,12 +833,14 @@ local function SellOnce()
         if not npcPos then
             IsSelling = false
             Notify("Auto Sell", "NPC position not found", 3)
+            ToggleDialogueHandler(false)
             return
         end
         
         if not root then
             IsSelling = false
             Notify("Auto Sell", "Character not found", 3)
+            ToggleDialogueHandler(false)
             return
         end
         
@@ -838,6 +864,7 @@ local function SellOnce()
         HasInitializedSell = false
         IsSelling = false
         Notify("Auto Sell", "Failed to open dialogue", 3)
+        ToggleDialogueHandler(false)
         return
     end
     
@@ -857,6 +884,8 @@ local function SellOnce()
     Log("Closing dialogue...")
     CloseSellDialogue(remotes)
     
+    ToggleDialogueHandler(false)
+
     -- TRIGGER AUTO-CLOSE BY RANGE
     -- DialogueHandler auto-closes when player is >18 units from NPC
     -- Teleport far away briefly, wait for range check (runs every 1s), then return
