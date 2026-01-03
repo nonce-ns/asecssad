@@ -22,6 +22,7 @@ end
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
@@ -114,6 +115,38 @@ local function Notify(title, content, duration)
             Duration = duration or 2
         })
     end)
+end
+
+local function ResetDashValue(container, key)
+    if type(container) ~= "table" then return false end
+    local value = rawget(container, key)
+    if type(value) == "number" then
+        container[key] = 0
+        return true
+    end
+    if type(value) == "boolean" then
+        container[key] = false
+        return true
+    end
+    return false
+end
+
+local function ResetDashState(movement)
+    if type(movement) ~= "table" then return false end
+    local changed = false
+    if ResetDashValue(movement, "DashCooldown") then changed = true end
+    if ResetDashValue(movement, "Dashing") then changed = true end
+    return changed
+end
+
+local function ShouldClearStatusBool(name)
+    if type(name) ~= "string" then return false end
+    local lower = name:lower()
+    return lower == "nomovement"
+        or lower == "disablebackpack"
+        or lower == "nodash"
+        or lower == "disabledash"
+        or lower == "nodashcooldown"
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -644,7 +677,20 @@ local function CloseSellDialogue(remotes)
     -- STEP 2: Fire close event to server
     if remotes.DialogueEvent then
         pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+        task.delay(0.2, function()
+            pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+        end)
+        task.delay(0.6, function()
+            pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
+        end)
     end
+
+    pcall(function()
+        GuiService.SelectedObject = nil
+        if GuiService.ClearSelection then
+            GuiService:ClearSelection()
+        end
+    end)
     
     -- STEP 3: Disable DialogueUI and hide ALL buttons inside (prevents InputAction from blocking Q key)
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -663,9 +709,12 @@ local function CloseSellDialogue(remotes)
                 end
             end
             
+            local wasEnabled = dialogueUI.Enabled
             pcall(function() dialogueUI.Enabled = false end)
-            task.delay(0.2, function()
-                pcall(function() dialogueUI.Enabled = true end)
+            task.delay(1.5, function()
+                if dialogueUI and dialogueUI.Parent and wasEnabled then
+                    pcall(function() dialogueUI.Enabled = true end)
+                end
             end)
         end
         
@@ -814,12 +863,12 @@ local function SellOnce()
     local root = char and char:FindFirstChild("HumanoidRootPart")
     
     if hum then
-        -- Remove ALL blocking tags in Status (BoolValues AND check NumberValues)
+        -- Remove blocking tags in Status (BoolValues AND check NumberValues)
         local status = char:FindFirstChild("Status")
         if status then
             for _, child in pairs(status:GetChildren()) do
                 -- Remove blocking BoolValues
-                if child:IsA("BoolValue") then
+                if child:IsA("BoolValue") and ShouldClearStatusBool(child.Name) then
                     Log("Removing Status BoolValue: " .. child.Name)
                     pcall(function() child:Destroy() end)
                 end
@@ -859,9 +908,9 @@ local function SellOnce()
         pcall(function()
             local playerStatus = GetPlayerStatus()
             if playerStatus and playerStatus.Movement then
-                playerStatus.Movement.DashCooldown = false
-                playerStatus.Movement.Dashing = false
-                Log("Reset dash cooldown via PlayerStatus")
+                if ResetDashState(playerStatus.Movement) then
+                    Log("Reset dash cooldown via PlayerStatus")
+                end
             end
         end)
         
@@ -878,9 +927,9 @@ local function SellOnce()
                     if PlayerController and PlayerController.Status then
                         local status = PlayerController.Status
                         if status.Data and status.Data.Movement then
-                            status.Data.Movement.DashCooldown = false
-                            status.Data.Movement.Dashing = false
-                            Log("Reset PlayerController.Status.Data.Movement.DashCooldown")
+                            if ResetDashState(status.Data.Movement) then
+                                Log("Reset PlayerController.Status.Data.Movement.DashCooldown")
+                            end
                         end
                     end
                     
@@ -892,15 +941,25 @@ local function SellOnce()
                         end
                     end
                     
-                    -- Try calling CharacterService:Dash directly to test/reset
-                    local CharacterService = KnitModule.GetService("CharacterService")
-                    if CharacterService and CharacterService.Dash then
-                        -- Do a quick dash to reset internal state (will appear as brief forward dash)
+                    -- Try calling CharacterService:Dash with delay (after dialog fully closes)
+                    task.delay(1.5, function()
                         pcall(function()
-                            CharacterService:Dash("LookVector", "+")
-                            Log("Called CharacterService:Dash to reset state")
+                            local CharacterService = KnitModule.GetService("CharacterService")
+                            if CharacterService and CharacterService.Dash then
+                                CharacterService:Dash("LookVector", "+")
+                                Log("Delayed CharacterService:Dash called")
+                            end
                         end)
-                    end
+                        
+                        -- Also try direct RF invoke
+                        pcall(function()
+                            local dashRF = ReplicatedStorage.Shared.Packages.Knit.Services.CharacterService.RF.Dash
+                            if dashRF then
+                                dashRF:InvokeServer("LookVector", "+")
+                                Log("Direct RF Dash invoked")
+                            end
+                        end)
+                    end)
                 end
             end
         end)
@@ -939,7 +998,7 @@ local function SellOnce()
             local status = char and char:FindFirstChild("Status")
             if status then
                 for _, child in pairs(status:GetChildren()) do
-                    if child:IsA("BoolValue") and (child.Name == "NoMovement" or child.Name == "DisableBackpack" or child.Name == "NoDash") then
+                    if child:IsA("BoolValue") and ShouldClearStatusBool(child.Name) then
                         pcall(function() child:Destroy() end)
                     end
                 end
