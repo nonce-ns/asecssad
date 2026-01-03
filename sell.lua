@@ -797,13 +797,20 @@ local function SellOnce()
     local root = char and char:FindFirstChild("HumanoidRootPart")
     
     if hum then
-        -- Remove ALL BoolValues in Status that might block movement
+        -- Remove ALL blocking tags in Status (BoolValues AND check NumberValues)
         local status = char:FindFirstChild("Status")
         if status then
             for _, child in pairs(status:GetChildren()) do
+                -- Remove blocking BoolValues
                 if child:IsA("BoolValue") then
-                    Log("Removing Status tag: " .. child.Name)
+                    Log("Removing Status BoolValue: " .. child.Name)
                     pcall(function() child:Destroy() end)
+                end
+                
+                -- Check for dash-blocking NumberValues
+                if child:IsA("NumberValue") and child.Name:lower():find("dashcooldown") then
+                    Log("Resetting dash cooldown NumberValue: " .. child.Name .. " = " .. tostring(child.Value))
+                    pcall(function() child.Value = 0 end)
                 end
             end
         end
@@ -841,6 +848,39 @@ local function SellOnce()
             end
         end)
         
+        -- Try to reset dash via Knit controller
+        pcall(function()
+            local Shared = ReplicatedStorage:FindFirstChild("Shared")
+            local Packages = Shared and Shared:FindFirstChild("Packages")
+            local Knit = Packages and Packages:FindFirstChild("Knit")
+            if Knit then
+                local KnitModule = require(Knit)
+                if KnitModule.GetController then
+                    local MovementController = KnitModule.GetController("MovementController")
+                    if MovementController then
+                        if MovementController.DashCooldown ~= nil then
+                            MovementController.DashCooldown = false
+                            Log("Reset MovementController.DashCooldown")
+                        end
+                        if MovementController.IsDashing ~= nil then
+                            MovementController.IsDashing = false
+                        end
+                        if MovementController.CanDash ~= nil then
+                            MovementController.CanDash = true
+                        end
+                    end
+                    
+                    local PlayerController = KnitModule.GetController("PlayerController")
+                    if PlayerController then
+                        if PlayerController.DashCooldown ~= nil then
+                            PlayerController.DashCooldown = false
+                            Log("Reset PlayerController.DashCooldown")
+                        end
+                    end
+                end
+            end
+        end)
+        
         -- One more comprehensive restore after delay
         task.delay(0.5, function()
             if hum then
@@ -852,14 +892,16 @@ local function SellOnce()
             end
             if root and root.Anchored then root.Anchored = false end
             
-            -- Reset dash again using PlayerStatus
-            pcall(function()
-                local playerStatus = GetPlayerStatus()
-                if playerStatus and playerStatus.Movement then
-                    playerStatus.Movement.DashCooldown = false
-                    playerStatus.Movement.Dashing = false
+            -- Clean up any remaining blocking tags
+            local char = GetCharacter()
+            local status = char and char:FindFirstChild("Status")
+            if status then
+                for _, child in pairs(status:GetChildren()) do
+                    if child:IsA("BoolValue") and (child.Name == "NoMovement" or child.Name == "DisableBackpack" or child.Name == "NoDash") then
+                        pcall(function() child:Destroy() end)
+                    end
                 end
-            end)
+            end
         end)
     end
 end
