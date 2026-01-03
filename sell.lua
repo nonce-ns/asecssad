@@ -666,6 +666,7 @@ local function OpenSellDialogue(remotes, npc)
     if ok and result ~= false then
         local gotPrompt = WaitForDialogueRoot("SellDialogueMisc", 1.5)
         if gotPrompt and remotes.DialogueEvent then
+            task.wait(10) -- delay before selecting "Yes" to allow prompt to settle
             pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
             pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
         end
@@ -691,6 +692,7 @@ local function OpenSellDialogue(remotes, npc)
 
     -- Step 4: mark opened once for confirm dialog
     if remotes.DialogueEvent then
+        task.wait(10) -- delay before "Deal" confirm
         pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
     end
     
