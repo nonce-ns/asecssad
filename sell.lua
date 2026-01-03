@@ -703,6 +703,8 @@ local function OpenSellDialogue(remotes, npc)
             okForce = true
         end
     end
+    -- Treat a successful pcall (even if result is nil) as success; only explicit false fails
+    if not okForce and ok and result == nil then okForce = true end
     if not okForce then
         return false
     end
