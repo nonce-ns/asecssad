@@ -201,7 +201,7 @@ end
 
 local function TryReuseCachedConfirm(remotes)
     if not CachedConfirmCtx then return false end
-    if (os.clock() - CachedConfirmTime) > 120 then
+    if (os.clock() - CachedConfirmTime) > 3600 then  -- 1 hour cache
         return false
     end
     Log("Reusing cached SellConfirm context (no teleport)")
@@ -830,7 +830,7 @@ local function CloseSellDialogue(remotes)
 end
 
 local function SellOnce(opts)
-    if IsSelling then return end
+    if IsSelling then return false end
     IsSelling = true
     
     -- Temporarily disable DialogueHandler to avoid client errors; we'll manage closure ourselves
@@ -841,7 +841,7 @@ local function SellOnce(opts)
         IsSelling = false
         Notify("Auto Sell", reason or "No items", 2)
         ToggleDialogueHandler(false)
-        return
+        return false
     end
     
     Log("Basket built with " .. count .. " items")
@@ -897,9 +897,11 @@ local function SellOnce(opts)
     if not dialogOpened and (noTeleport or (HasInitializedSell and Config.NoTeleportAfterFirst)) then
         Log("Returning early - dialog not opened and noTeleport mode")
         IsSelling = false
-        Notify("Auto Sell", "Dialog tidak dapat dibuka tanpa teleport. Dekati NPC.", 3)
+        if not noTeleport then
+            Notify("Auto Sell", "Dialog tidak dapat dibuka tanpa teleport. Dekati NPC.", 3)
+        end
         ToggleDialogueHandler(false)
-        return
+        return false
     end
     
     -- Jika masih gagal, baru paksa teleport (kecuali noTeleport)
@@ -994,6 +996,7 @@ local function SellOnce(opts)
     end
     
     IsSelling = false
+    local finalSuccess = sellSuccess
     
     -- COMPREHENSIVE MOVEMENT RESTORATION
     local char = GetCharacter()
@@ -1123,6 +1126,8 @@ local function SellOnce(opts)
             end
         end)
     end
+    
+    return finalSuccess
 end
 -- AUTO SELL LOOP
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -1134,7 +1139,18 @@ local function StartAutoSell()
             task.wait(0.5)
             if not Config.AutoSell then break end
             if not IsSelling and (tick() - LastSellTime) >= Config.SellInterval then
-                SellOnce()
+                -- Try no-teleport first
+                Log("Auto Sell: Trying no-teleport...")
+                local success = SellOnce({noTeleport = true})
+                
+                -- If failed, fallback to force teleport
+                if not success and Config.AutoSell then
+                    task.wait(1)
+                    if not IsSelling then
+                        Log("Auto Sell: No-teleport failed, fallback to force teleport...")
+                        SellOnce({forceTeleport = true})
+                    end
+                end
             end
         end
         AutoSellThread = nil
