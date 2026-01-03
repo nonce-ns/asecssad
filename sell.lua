@@ -149,6 +149,26 @@ local function ShouldClearStatusBool(name)
         or lower == "nodashcooldown"
 end
 
+-- Wait for DialogueRemote to deliver a specific root (e.g., SellConfirmMisc)
+local function WaitForDialogueRoot(targetRoot, timeout)
+    local dlgRemote = ReplicatedStorage:FindFirstChild("DialogueRemote", true)
+    if not dlgRemote or not targetRoot then return false end
+    local received = false
+    local conn
+    conn = dlgRemote.OnClientEvent:Connect(function(root)
+        if root == targetRoot then
+            received = true
+        end
+    end)
+    local start = os.clock()
+    local limit = timeout or 2
+    while not received and (os.clock() - start) < limit do
+        task.wait(0.05)
+    end
+    if conn then conn:Disconnect() end
+    return received
+end
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- REMOTES
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -168,6 +188,7 @@ local function GetRemotes()
 
     return {
         ForceDialogue = proximityRF and proximityRF:FindFirstChild("ForceDialogue"),
+        Dialogue = proximityRF and proximityRF:FindFirstChild("Dialogue"),
         RunCommand = dialogueRF and dialogueRF:FindFirstChild("RunCommand"),
         DialogueEvent = dialogueRE and dialogueRE:FindFirstChild("DialogueEvent")
     }
@@ -634,22 +655,41 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 
 local function OpenSellDialogue(remotes, npc)
-    if not remotes or not remotes.ForceDialogue or not npc then
+    if not remotes or not remotes.ForceDialogue or not remotes.Dialogue or not npc then
         return false
     end
     
-    if remotes.DialogueEvent then
-        pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
-    end
-    task.wait(0.1)
-    
+    -- Step 1: request dialogue prompt (server validates range)
+    local okDialogue = false
     local ok, result = pcall(function()
+        return remotes.Dialogue:InvokeServer(npc)
+    end)
+    if ok and result ~= false then
+        okDialogue = true
+    end
+    if not okDialogue then
+        return false
+    end
+    
+    -- Step 2: open sell confirm
+    local okForce = false
+    ok, result = pcall(function()
         return remotes.ForceDialogue:InvokeServer(npc, "SellConfirmMisc")
     end)
-    if not ok or result == false then
+    if ok and result ~= false then
+        okForce = true
+    end
+    if not okForce then
         return false
     end
-    
+
+    -- Step 3: wait for server to send SellConfirmMisc root before we RunCommand
+    local gotConfirm = WaitForDialogueRoot("SellConfirmMisc", 2)
+    if not gotConfirm then
+        return false
+    end
+
+    -- Step 4: mark opened once (single Opened)
     if remotes.DialogueEvent then
         pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
     end
@@ -677,12 +717,6 @@ local function CloseSellDialogue(remotes)
     -- STEP 2: Fire close event to server
     if remotes.DialogueEvent then
         pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
-        task.delay(0.2, function()
-            pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
-        end)
-        task.delay(0.6, function()
-            pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
-        end)
     end
 
     pcall(function()
@@ -692,13 +726,11 @@ local function CloseSellDialogue(remotes)
         end
     end)
     
-    -- STEP 3: Disable DialogueUI and hide ALL buttons inside (prevents InputAction from blocking Q key)
+    -- STEP 3: Clean up DialogueUI visuals (avoid toggling Enabled to prevent stale state)
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if playerGui then
         local dialogueUI = playerGui:FindFirstChild("DialogueUI")
         if dialogueUI then
-            Log("Disabling DialogueUI and hiding buttons")
-            
             -- Hide all GuiButtons to prevent InputAction.IsActive() from blocking dash
             for _, descendant in pairs(dialogueUI:GetDescendants()) do
                 if descendant:IsA("GuiButton") then
@@ -708,14 +740,6 @@ local function CloseSellDialogue(remotes)
                     end)
                 end
             end
-            
-            local wasEnabled = dialogueUI.Enabled
-            pcall(function() dialogueUI.Enabled = false end)
-            task.delay(1.5, function()
-                if dialogueUI and dialogueUI.Parent and wasEnabled then
-                    pcall(function() dialogueUI.Enabled = true end)
-                end
-            end)
         end
         
         -- Also hide ResponseBillboard if it exists
@@ -740,7 +764,7 @@ local function SellOnce()
     Log("Basket built with " .. count .. " items")
     
     local remotes = GetRemotes()
-    if not remotes.RunCommand or not remotes.ForceDialogue then
+    if not remotes.RunCommand or not remotes.ForceDialogue or not remotes.Dialogue then
         IsSelling = false
         Notify("Auto Sell", "Remotes not found", 3)
         return
