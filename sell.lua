@@ -659,20 +659,19 @@ local function OpenSellDialogue(remotes, npc)
         return false
     end
     
-    -- Step 1: request initial dialogue prompt (SellDialogueMisc). If it fails, continue with ForceDialogue as fallback.
+    -- Step 1: request initial dialogue prompt (SellDialogueMisc). If it succeeds, simulate Yes; otherwise continue.
     local ok, result = pcall(function()
         return remotes.Dialogue:InvokeServer(npc)
     end)
     if ok and result ~= false then
         local gotPrompt = WaitForDialogueRoot("SellDialogueMisc", 1.5)
         if gotPrompt and remotes.DialogueEvent then
-            task.wait(10) -- delay before selecting "Yes" to allow prompt to settle
             pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
             pcall(function() remotes.DialogueEvent:FireServer("Closed") end)
         end
     end
     
-    -- Step 2: open sell confirm (always attempt, even if Step 1 failed)
+    -- Step 2: open sell confirm (ForceDialogue) with retry if needed
     local okForce = false
     ok, result = pcall(function()
         return remotes.ForceDialogue:InvokeServer(npc, "SellConfirmMisc")
@@ -681,18 +680,27 @@ local function OpenSellDialogue(remotes, npc)
         okForce = true
     end
     if not okForce then
+        task.wait(0.5)
+        okForce = remotes.ForceDialogue and pcall(function()
+            return remotes.ForceDialogue:InvokeServer(npc, "SellConfirmMisc")
+        end)
+    end
+    if not okForce then
         return false
     end
     
-    -- Step 3: wait for server to send SellConfirmMisc root before we RunCommand
+    -- Step 3: wait for server to send SellConfirmMisc root before we RunCommand (retry once)
     local gotConfirm = WaitForDialogueRoot("SellConfirmMisc", 2)
+    if not gotConfirm then
+        task.wait(0.5)
+        gotConfirm = WaitForDialogueRoot("SellConfirmMisc", 2)
+    end
     if not gotConfirm then
         return false
     end
 
     -- Step 4: mark opened once for confirm dialog
     if remotes.DialogueEvent then
-        task.wait(10) -- delay before "Deal" confirm
         pcall(function() remotes.DialogueEvent:FireServer("Opened") end)
     end
     
